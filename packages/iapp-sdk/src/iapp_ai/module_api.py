@@ -16,7 +16,10 @@ import os
 from typing import Dict, Any, List, Optional
 
 import requests
-from iapp_core import request_sync, open_input_files
+from iapp_core import request_sync, open_input_files, build_output_path
+
+
+taskGuid = ""
 
 
 class api():
@@ -354,19 +357,66 @@ class api():
             return response
 
 
-    def face_liveness(self, file_path, headers={}, data_payload={}, files=[]):
+    def face_liveness(
+        self,
+        file_path: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Check whether a face photo is of a real live person or a spoof.
+
+        Args:
+            file_path: Path to the face image file.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         global taskGuid
-        request_files = [('file',(file_path, open(file_path,'rb'),'image/jpg'))]
-        request_files.extend(files)
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpg'))]
+            request_files.extend(files)
 
-        response = request_sync("POST", "https://api.iapp.co.th/passive-face-liveness-detection",
-                                apikey=self.apikey, headers=headers,
-                                data={**data_payload}, files=request_files)
-        taskGuid = response
+            response = request_sync("POST", "https://api.iapp.co.th/passive-face-liveness-detection",
+                                    apikey=self.apikey, headers=headers,
+                                    data={**data_payload}, files=request_files)
+            try:
+                taskGuid = response.json().get("taskGuid", "")
+            except Exception:
+                taskGuid = ""
 
-        return response
+            return response
 
-    def info_face_liveness(self, headers={}, taskGuid='', url=[]):
+    def info_face_liveness(
+        self,
+        headers: Optional[Dict[str, str]] = None,
+        taskGuid: str = "",
+        url: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Retrieve results for an asynchronous face liveness check.
+
+        Args:
+            headers: Additional HTTP headers to send with the request.
+            taskGuid: Task ID of the liveness check to query.
+            url: Unused legacy parameter preserved for backward compatibility.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if url is None:
+            url = []
         request_url = "https://api.iapp.co.th/passive-face-liveness-detection/" + taskGuid
         # print(request_url)
 
@@ -413,123 +463,455 @@ class api():
                             headers={'Content-Type': 'application/json', **headers},
                             data=request_data_payload)
 
-    def face_verification(self, file_path1, file_path2, company_name, min_score, headers={}, data_payload={}, files=[]):
+    def face_verification(
+        self,
+        file_path1: str,
+        file_path2: str,
+        company_name: str,
+        min_score: float,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Compare two face images (1:1 verification).
+
+        Args:
+            file_path1: Path to the first face image.
+            file_path2: Path to the second face image.
+            company_name: Company name / namespace.
+            min_score: Threshold match score (0-100).
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename1 = os.path.basename(file_path1)
         filename2 = os.path.basename(file_path2)
         request_data_payload = {'company': company_name,'min_score': min_score, **data_payload}
-        request_files = [('file1',(filename1, open(file_path1,'rb'),'application/octet-stream')),('file2',(filename2, open(file_path2,'rb'),'application/octet-stream')) ]
-        request_files.extend(files)
+        with open_input_files([file_path1, file_path2]) as [fh1, fh2]:
+            request_files = [('file1',(filename1, fh1,'application/octet-stream')),('file2',(filename2, fh2,'application/octet-stream')) ]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_compare",
+            return request_sync("POST", "https://api.iapp.co.th/face_compare",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
+
+    def _face_config_score(self, data_payload, headers=None):
+        if headers is None:
+            headers = {}
+        return request_sync("POST", "https://api.iapp.co.th/face_config_score",
                             apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+                            data=data_payload)
 
-    def face_ver_config_score(self, detect_value, compare_value, company_name, company_password, headers={}, data_payload={}):
+    def face_ver_config_score(
+        self,
+        detect_value: float,
+        compare_value: float,
+        company_name: str,
+        company_password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Configure face verification matching scores for a company.
+
+        Args:
+            detect_value: Detection threshold value.
+            compare_value: Verification threshold value.
+            company_name: Company name / namespace.
+            company_password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to configure.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'detect_value': detect_value, 'compare_value': compare_value, 'company': company_name, 'password': company_password, **data_payload}
-
-        url = "https://api.iapp.co.th/face_config_score"
-
-        return request_sync("POST", url, apikey=self.apikey, headers=headers,
-                            data=request_data_payload)
+        return self._face_config_score(request_data_payload, headers=headers)
 
 
-    def face_ver2(self, file_path1, file_path2, headers={}, data_payload={}, files=[]):
+    def face_ver2(
+        self,
+        file_path1: str,
+        file_path2: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Compare two face images using the V2 face verification API.
+
+        Args:
+            file_path1: Path to the first face image.
+            file_path2: Path to the second face image.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename1 = os.path.basename(file_path1)
         filename2 = os.path.basename(file_path2)
-        request_files = [('file1',(filename1, open(file_path1,'rb'),'image/jpg')),('file2',(filename2, open(file_path2,'rb'),'image/jpg')) ]
-        request_files.extend(files)
+        with open_input_files([file_path1, file_path2]) as [fh1, fh2]:
+            request_files = [('file1',(filename1, fh1,'image/jpg')),('file2',(filename2, fh2,'image/jpg')) ]
+            request_files.extend(files)
 
-        return request_sync("POST", 'https://api.iapp.co.th/face-verification/v2/face_compare',
-                            apikey=self.apikey, headers=headers,
-                            data={**data_payload}, files=request_files)
+            return request_sync("POST", 'https://api.iapp.co.th/face-verification/v2/face_compare',
+                                apikey=self.apikey, headers=headers,
+                                data={**data_payload}, files=request_files)
 
-    def face_detect_single(self,  file_path, headers={}, data_payload={}, files=[]):
+    def face_detect_single(
+        self,
+        file_path: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Detect a single face in an image.
+
+        Args:
+            file_path: Path to the image file.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_detect_single",
-                            apikey=self.apikey, headers=headers,
-                            data={**data_payload}, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_detect_single",
+                                apikey=self.apikey, headers=headers,
+                                data={**data_payload}, files=request_files)
 
-    def face_detect_multi(self,  file_path, company_name, headers={}, data_payload={}, files=[]):
+    def face_detect_multi(
+        self,
+        file_path: str,
+        company_name: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Detect multiple faces in an image.
+
+        Args:
+            file_path: Path to the image file.
+            company_name: Company name / namespace.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_detect_multi",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_detect_multi",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_detect_config_score(self, detect_value, company_name, company_password, headers={}, data_payload={}):
+    def face_detect_config_score(
+        self,
+        detect_value: float,
+        company_name: str,
+        company_password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Configure face detection scores for a company.
+
+        Args:
+            detect_value: Detection threshold score value.
+            company_name: Company name / namespace.
+            company_password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to configure.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'detect_value': detect_value, 'company': company_name, 'password': company_password, **data_payload}
-
-        # Configure Score
-        url = "https://api.iapp.co.th/face_config_score"
-
-        return request_sync("POST", url, apikey=self.apikey, headers=headers,
-                            data=request_data_payload)
+        return self._face_config_score(request_data_payload, headers=headers)
 
 
-    def face_recog_single(self, file_path, company_name, headers={}, data_payload={}, files=[]):
+    def face_recog_single(
+        self,
+        file_path: str,
+        company_name: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Recognize a single face from a company database (1:N recognition).
+
+        Args:
+            file_path: Path to the image file containing the face.
+            company_name: Company namespace to search.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_recog_single",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_recog_single",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_recog_multi(self, file_path, company_name, headers={}, data_payload={}, files=[]):
+    def face_recog_multi(
+        self,
+        file_path: str,
+        company_name: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Recognize multiple faces from a company database.
+
+        Args:
+            file_path: Path to the image file containing faces.
+            company_name: Company namespace to search.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_recog_multi",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_recog_multi",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_recog_facecrop(self, file_path, company_name, headers={}, data_payload={}, files=[]):
+    def face_recog_facecrop(
+        self,
+        file_path: str,
+        company_name: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Crop and recognize a face from a company database.
+
+        Args:
+            file_path: Path to the image file containing the face.
+            company_name: Company namespace to search.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_recog_facecrop",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_recog_facecrop",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_recog_add(self, file_path, company_name, name, password, headers={}, data_payload={}, files=[]):
+    def face_recog_add(
+        self,
+        file_path: str,
+        company_name: str,
+        name: str,
+        password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Enroll/add a face to a company database.
+
+        Args:
+            file_path: Path to the face image file.
+            company_name: Company namespace.
+            name: Name of the person to associate with the face.
+            password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, 'name': name, 'password': password, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpeg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpeg'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_recog_add",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_recog_add",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_recog_import(self, file_path, company_name, password, headers={}, data_payload={}, files=[]):
+    def face_recog_import(
+        self,
+        file_path: str,
+        company_name: str,
+        password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Import multiple faces from a CSV file.
+
+        Args:
+            file_path: Path to the CSV file.
+            company_name: Company namespace.
+            password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {'company': company_name, 'password': password, **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'text/csv'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'text/csv'))]
+            request_files.extend(files)
 
-        return request_sync("POST", "https://api.iapp.co.th/face_recog_import",
-                            apikey=self.apikey, headers=headers,
-                            data=request_data_payload, files=request_files)
+            return request_sync("POST", "https://api.iapp.co.th/face_recog_import",
+                                apikey=self.apikey, headers=headers,
+                                data=request_data_payload, files=request_files)
 
-    def face_recog_check(self, company_name, company_password, headers={}, data_payload={}):
+    def face_recog_check(
+        self,
+        company_name: str,
+        company_password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Check all faces in a company namespace database.
+
+        Args:
+            company_name: Company namespace.
+            company_password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to send.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'company': company_name, 'password': company_password, **data_payload}
 
         url = "https://api.iapp.co.th/face_recog_check"
         return request_sync("POST", url, apikey=self.apikey, headers=headers,
                             data=request_data_payload)
 
-    def face_recog_export(self, company_name, company_password, type_file, headers={}, data_payload={}):
+    def face_recog_export(
+        self,
+        company_name: str,
+        company_password: str,
+        type_file: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Export face database records for a company namespace.
+
+        Args:
+            company_name: Company namespace.
+            company_password: Password for authentication.
+            type_file: Format of the exported file.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to send.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'company': company_name, 'password': company_password, 'type_file': type_file, **data_payload}
 
         url = "https://api.iapp.co.th/face_recog_export"
@@ -537,22 +919,85 @@ class api():
         return request_sync("POST", url, apikey=self.apikey, headers=headers,
                             data=request_data_payload)
 
-    def face_recog_remove(self, company_name, name, company_password, date, face_id, headers={}, data_payload={}):
+    def face_recog_remove(
+        self,
+        company_name: str,
+        name: str,
+        company_password: str,
+        date: str,
+        face_id: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Remove a face record from a company database.
+
+        Args:
+            company_name: Company namespace.
+            name: Name of the person.
+            company_password: Password for authentication.
+            date: Registration date.
+            face_id: ID of the face to remove.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to send.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'company': company_name, 'name': name, 'password': company_password,'date': date, 'face_id': face_id, **data_payload}
 
         url = "https://api.iapp.co.th/face_recog_remove"
         return request_sync("POST", url, apikey=self.apikey, headers=headers,
                             data=request_data_payload)
 
-    def face_recog_config_score(self, detect_value, recog_value, company_name, company_password, headers={}, data_payload={}):
+    def face_recog_config_score(
+        self,
+        detect_value: float,
+        recog_value: float,
+        company_name: str,
+        company_password: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Configure face recognition scores for a company namespace.
+
+        Args:
+            detect_value: Detection threshold value.
+            recog_value: Recognition threshold value.
+            company_name: Company namespace.
+            company_password: Password for authentication.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional parameters to configure.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
         request_data_payload = {'detect_value': detect_value,'recog_value':recog_value, 'company': company_name, 'password': company_password, **data_payload}
+        return self._face_config_score(request_data_payload, headers=headers)
 
-        # Configure Score
-        url = "https://api.iapp.co.th/face_config_score"
-        return request_sync("POST", url, apikey=self.apikey, headers=headers,
-                            data=request_data_payload)
+    def img_bg_removal_base64(
+        self,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Any] = None,
+    ) -> requests.Response:
+        """Remove background from an image supplied as a base64 string.
 
-    def img_bg_removal_base64(self,headers={}, data_payload={}):
+        Args:
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Base64 string payload of the image.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
         request_data_payload = json.dumps({
             'content': data_payload,
             "rotateIfPortiat": True
@@ -562,20 +1007,47 @@ class api():
                             headers={'Content-Type': 'application/json', **headers},
                             data=request_data_payload)
 
-    def img_bg_removal_file(self, file_path, headers={}, data_payload={}, files=[]):
+    def img_bg_removal_file(
+        self,
+        file_path: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+        output_path: Optional[str] = None,
+    ) -> requests.Response:
+        """Remove background from an image file and save the result.
+
+        Args:
+            file_path: Path to the image file.
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+            output_path: Optional path to save the output file.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
         filename = os.path.basename(file_path)
         request_data_payload = {
              "rotateIfPortiat": True,
              **data_payload}
-        request_files = [('file',(filename, open(file_path,'rb'),'image/jpg'))]
-        request_files.extend(files)
+        with open_input_files([file_path]) as [fh]:
+            request_files = [('file',(filename, fh,'image/jpg'))]
+            request_files.extend(files)
 
-        response = request_sync("POST", "https://api.iapp.co.th/face-extractor/predict/file",
-                                apikey=self.apikey, headers=headers,
-                                data=request_data_payload, files=request_files)
-        with open("media/img_bg_removal_file.jpg", "wb") as file:
-            file.write(response.content)
-        return response
+            response = request_sync("POST", "https://api.iapp.co.th/face-extractor/predict/file",
+                                    apikey=self.apikey, headers=headers,
+                                    data=request_data_payload, files=request_files)
+            target_path = build_output_path("img_bg_removal_file.jpg", output_path)
+            with open(target_path, "wb") as file:
+                file.write(response.content)
+            return response
 
     def driver_card_ocr(
         self,
@@ -638,3 +1110,249 @@ class api():
         with open("media/cee.wav", "wb") as file:
             file.write(response.content)
         return response
+
+    ############## APIs added to match api docs (iapp.co.th/docs) ##############
+    # Endpoints mirror the verified iapp-mcp tools. Every method returns the raw
+    # requests.Response, consistent with the rest of this SDK.
+
+    def llm_chat(
+        self,
+        prompt: str = "",
+        model: str = "chinda-qwen3-4b",
+        system_prompt: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Chat with iApp-hosted LLMs (OpenAI-compatible).
+
+        model: chinda-qwen3-4b | deepseek-reasoner | deepseek-chat |
+        deepseek-v4-flash | deepseek-v4-pro.
+        """
+        headers = headers or {}
+        endpoints = {
+            "chinda-qwen3-4b": "https://api.iapp.co.th/v3/llm/chinda-thaillm-4b/chat/completions",
+            "deepseek-reasoner": "https://api.iapp.co.th/v3/llm/deepseek-3p2/chat/completions",
+            "deepseek-chat": "https://api.iapp.co.th/v3/llm/deepseek-3p2/chat/completions",
+            "deepseek-v4-flash": "https://api.iapp.co.th/v3/llm/deepseek-v4/chat/completions",
+            "deepseek-v4-pro": "https://api.iapp.co.th/v3/llm/deepseek-v4/chat/completions",
+        }
+        messages: List[Dict[str, str]] = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        payload = json.dumps({
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        })
+        return request_sync("POST", endpoints[model], apikey=self.apikey,
+                            headers={'Content-Type': 'application/json', **headers},
+                            data=payload)
+
+    def thanoy_legal_qa(self, query: str = "", headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thanoy Thai Legal AI chatbot (ทนายAI)."""
+        headers = headers or {}
+        payload = json.dumps({"query": query})
+        return request_sync("POST", "https://api.iapp.co.th/thanoy", apikey=self.apikey,
+                            headers={'Content-Type': 'application/json', **headers},
+                            data=payload)
+
+    def image_generation(self, prompt: str = "", model: str = "nanobanana", headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Generate an image (Google Nano Banana). model: nanobanana | nanobanana-pro."""
+        headers = headers or {}
+        slug = "nanobanana" if model == "nanobanana" else "nanobananapro"
+        url = f"https://api.iapp.co.th/v3/image/generation/google/{slug}/generate"
+        payload = json.dumps({
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]},
+        })
+        return request_sync("POST", url, apikey=self.apikey,
+                            headers={'Content-Type': 'application/json', **headers},
+                            data=payload)
+
+    def seedance_video_submit(
+        self,
+        prompt: str = "",
+        model: str = "seedance-fast",
+        duration: int = 5,
+        ratio: str = "16:9",
+        resolution: str = "720p",
+        generate_audio: bool = True,
+        watermark: bool = False,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Submit an async Seedance 2.0 video job. Poll with seedance_video_status()."""
+        headers = headers or {}
+        model_ids = {
+            "seedance": "dreamina-seedance-2-0-260128",
+            "seedance-fast": "dreamina-seedance-2-0-fast-260128",
+        }
+        payload = json.dumps({
+            "model": model_ids[model],
+            "content": [{"type": "text", "text": prompt}],
+            "duration": duration,
+            "ratio": ratio,
+            "resolution": resolution,
+            "generate_audio": generate_audio,
+            "watermark": watermark,
+        })
+        return request_sync("POST", "https://api.iapp.co.th/v3/store/video/seedance/tasks",
+                            apikey=self.apikey,
+                            headers={'Content-Type': 'application/json', **headers},
+                            data=payload)
+
+    def seedance_video_status(self, task_id: str = "", headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Check a Seedance video job status; returns the download URL when done."""
+        headers = headers or {}
+        url = "https://api.iapp.co.th/v3/store/video/seedance/tasks/" + str(task_id)
+        return request_sync("GET", url, apikey=self.apikey, headers=headers)
+
+    def receipt_ocr(self, file_path: str, return_ocr: bool = False, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai receipt / tax-invoice OCR."""
+        headers = headers or {}
+        data = {"return_ocr": "true"} if return_ocr else {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/receipt",
+                                apikey=self.apikey, headers=headers,
+                                data=data, files=[('file', (filename, fh))])
+
+    def credit_card_statement_ocr(self, file_path: str, return_ocr: bool = False, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai credit card statement OCR."""
+        headers = headers or {}
+        data = {"return_ocr": "true"} if return_ocr else {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/creditcard-statement",
+                                apikey=self.apikey, headers=headers,
+                                data=data, files=[('file', (filename, fh))])
+
+    def tax_deduction_certificate_ocr(self, file_path: str, return_ocr: bool = False, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai withholding tax deduction certificate (50 ทวิ) OCR."""
+        headers = headers or {}
+        data = {"return_ocr": "true"} if return_ocr else {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/tax-deduction-certificate",
+                                apikey=self.apikey, headers=headers,
+                                data=data, files=[('file', (filename, fh))])
+
+    def civil_registration_ocr(self, file_path: str, return_ocr: bool = False, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai civil registration certificate OCR."""
+        headers = headers or {}
+        data = {"return_ocr": "true"} if return_ocr else {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/civil-registeration-certificate",
+                                apikey=self.apikey, headers=headers,
+                                data=data, files=[('file', (filename, fh))])
+
+    def resume_ocr(self, file_path: str, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """AI resume / CV extraction and evaluation."""
+        headers = headers or {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/curriculum-vitae",
+                                apikey=self.apikey, headers=headers,
+                                files=[('file', (filename, fh))])
+
+    def job_description_ocr(self, file_path: str, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """AI job description extraction."""
+        headers = headers or {}
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ocr/job-description",
+                                apikey=self.apikey, headers=headers,
+                                files=[('file', (filename, fh))])
+
+    def speech_to_text(
+        self,
+        file_path: str,
+        language: str = "th",
+        quality: str = "base",
+        chunk_size: Optional[int] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Speech-to-text with diarization. language: th|en|zh, quality: base|pro."""
+        headers = headers or {}
+        paths = {
+            ("th", "base"): "/v3/store/speech/speech-to-text/base",
+            ("th", "pro"): "/v3/store/speech/speech-to-text/pro",
+            ("en", "base"): "/v3/store/speech/speech-to-text/base/en",
+            ("en", "pro"): "/v3/store/speech/speech-to-text/pro/en",
+            ("zh", "base"): "/v3/store/speech/speech-to-text/base/zh",
+            ("zh", "pro"): "/v3/store/speech/speech-to-text/pro/zh",
+        }
+        url = "https://api.iapp.co.th" + paths[(language, quality)]
+        data: Dict[str, Any] = {}
+        if chunk_size is not None:
+            data["chunk_size"] = str(chunk_size)
+        filename = os.path.basename(file_path)
+        with open_input_files([file_path]) as [fh]:
+            return request_sync("POST", url, apikey=self.apikey, headers=headers,
+                                data=data, files=[('file', (filename, fh))])
+
+    def voice_clone_tts(
+        self,
+        text: str,
+        ref_audio_path: str,
+        ref_text: str,
+        speed: float = 1.0,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Voice cloning TTS from a short reference audio sample."""
+        headers = headers or {}
+        data = {"text": text, "ref_text": ref_text, "speed": str(speed)}
+        filename = os.path.basename(ref_audio_path)
+        with open_input_files([ref_audio_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/audio/tts/clone",
+                                apikey=self.apikey, headers=headers,
+                                data=data, files=[('ref_audio', (filename, fh))])
+
+    def ai_audio_detection(self, audio_path: str, headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Detect whether audio was AI-generated (iApp TTS watermark detection)."""
+        headers = headers or {}
+        filename = os.path.basename(audio_path)
+        with open_input_files([audio_path]) as [fh]:
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/audio/tts/detect",
+                                apikey=self.apikey, headers=headers,
+                                files=[('audio', (filename, fh))])
+
+    def sentiment_analysis(self, text: str = "", headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai sentiment analysis (positive / neutral / negative)."""
+        headers = headers or {}
+        return request_sync("POST", "https://api.iapp.co.th/v3/store/nlp/sentiment-analysis",
+                            apikey=self.apikey, headers=headers, params={"text": text})
+
+    def toxicity_classification(self, text: str = "", headers: Optional[Dict[str, Any]] = None) -> requests.Response:
+        """Thai text toxicity classification."""
+        headers = headers or {}
+        return request_sync("POST", "https://api.iapp.co.th/v3/store/nlp/toxicity-classification",
+                            apikey=self.apikey, headers=headers, params={"text": text})
+
+    def thai_holidays(
+        self,
+        year: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        holiday_type: str = "public",
+        days_after: Optional[int] = None,
+        headers: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Thai public holiday data (by year, by date range, or around today)."""
+        headers = headers or {}
+        params: Dict[str, Any] = {"holiday_type": holiday_type}
+        if year is not None:
+            url = "https://api.iapp.co.th/v3/store/data/thai-holiday/year/" + str(year)
+        elif start_date and end_date:
+            url = "https://api.iapp.co.th/v3/store/data/thai-holiday/range"
+            params["start_date"] = start_date
+            params["end_date"] = end_date
+        else:
+            url = "https://api.iapp.co.th/v3/store/data/thai-holiday"
+            if days_after is not None:
+                params["days_after"] = str(days_after)
+        return request_sync("GET", url, apikey=self.apikey, headers=headers, params=params)
