@@ -44,7 +44,7 @@ class api():
             'question': question,
             'document': document})
 
-        return request_sync("POST", f"{API_BASE}/thai-qa",
+        return request_sync("POST", f"{API_BASE}/v3/store/nlp/question/answer/v3",
                             apikey=self.apikey,
                             headers={'Content-Type': 'application/json', **headers},
                             data=request_data_payload)
@@ -153,7 +153,7 @@ class api():
         with open_input_files([file_path]) as [fh]:
             request_files = [('file',(filename, fh,'image/jpg'))]
             request_files.extend(files)
-            return request_sync("POST", "https://api.iapp.co.th/thai-national-id-card/v3/front",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/thai-national-id-card/front",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -185,7 +185,7 @@ class api():
         with open_input_files([file_path]) as [fh]:
             request_files = [('file',(filename, fh,'image/jpg'))]
             request_files.extend(files)
-            return request_sync("POST", "https://api.iapp.co.th/thai-national-id-card-with-signature/front",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/thai-national-id-card-with-signature",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -218,7 +218,7 @@ class api():
             request_files = [('file',(filename, fh,'image/jpg'))]
             request_files.extend(files)
 
-            return request_sync("POST", "https://api.iapp.co.th/thai-national-id-card/v3.5/back",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/thai-national-id-card/back",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -231,7 +231,7 @@ class api():
             request_files = [('file',(filename, file_obj, 'image/jpg'))]
             request_files.extend(files)
 
-            return request_sync("POST", "https://api.iapp.co.th/license-plate-recognition/file",
+            return request_sync("POST", f"{API_BASE}/v3/store/smart-city/license-plate-ocr",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -275,7 +275,7 @@ class api():
             request_files = [('file',(filename, fh,'image/jpg'))]
             request_files.extend(files)
 
-            return request_sync("POST", "https://api.iapp.co.th/book-bank-ocr/file",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/book-bank",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -308,7 +308,7 @@ class api():
             request_files = [('file',(filename, fh))]
             request_files.extend(files)
 
-            return request_sync("POST", "https://api.iapp.co.th/passport-ocr/ocr",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/passport/v2",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 
@@ -508,23 +508,21 @@ class api():
 
     def water_meter_binary(self, file_path: str, headers: Optional[Dict[str, Any]] = None, data_payload: Optional[Dict[str, Any]] = None, files: Optional[List[Any]] = None) -> requests.Response:
         headers = headers or {}
-        data_payload = data_payload or {}
-        files = files or []
-        filename = os.path.basename(file_path)
         with open_input_files([file_path]) as (file_obj,):
-            request_files = [('file',(filename, file_obj, 'image/jpg'))]
-            request_files.extend(files)
+            data = base64.b64encode(file_obj.read()).decode("ascii")
+        request_data_payload = json.dumps({'image': data})
 
-            return request_sync("POST", "https://api.iapp.co.th/meter-number-ocr/file",
-                                apikey=self.apikey, headers=headers,
-                                data={**data_payload}, files=request_files)
+        return request_sync("POST", f"{API_BASE}/v3/store/smart-city/power-meter-and-water-meter/base64",
+                            apikey=self.apikey,
+                            headers={'Content-Type': 'application/json', **headers},
+                            data=request_data_payload)
 
     def water_meter_base64(self, headers: Optional[Dict[str, Any]] = None, data_payload: Any = None) -> requests.Response:
         headers = headers or {}
         request_data_payload = json.dumps({
             'image': data_payload})
 
-        return request_sync("POST", "https://api.iapp.co.th/meter-number-ocr/base64",
+        return request_sync("POST", f"{API_BASE}/v3/store/smart-city/power-meter-and-water-meter/base64",
                             apikey=self.apikey,
                             headers={'Content-Type': 'application/json', **headers},
                             data=request_data_payload)
@@ -569,6 +567,47 @@ class api():
             return request_sync("POST", "https://api.iapp.co.th/v3/store/ekyc/face-verification",
                                 apikey=self.apikey, headers=headers,
                                 data=request_data_payload, files=request_files)
+
+    def face_id_card_verification(
+        self,
+        id_card_path: str,
+        selfie_path: str,
+        headers: Optional[Dict[str, str]] = None,
+        data_payload: Optional[Dict[str, Any]] = None,
+        files: Optional[List[Any]] = None,
+    ) -> requests.Response:
+        """Verify that a selfie matches the face photo on a Thai national ID card.
+
+        The core eKYC identity check: compares a selfie against the face on an ID
+        card and returns per-image and total confidence plus ``isSamePerson``
+        verdicts. Unlike :meth:`face_verification` (face-to-face 1:1), this pairs a
+        selfie with the photo extracted from the ID card.
+
+        Args:
+            id_card_path: Path to the ID card image (JPG/PNG, min 600x400, max 10MB).
+            selfie_path: Path to the selfie image (same constraints).
+            headers: Additional HTTP headers to send with the request.
+            data_payload: Additional form-data parameters to send.
+            files: Additional files to upload.
+
+        Returns:
+            requests.Response: The HTTP response from the API server.
+        """
+        if headers is None:
+            headers = {}
+        if data_payload is None:
+            data_payload = {}
+        if files is None:
+            files = []
+        filename0 = os.path.basename(id_card_path)
+        filename1 = os.path.basename(selfie_path)
+        with open_input_files([id_card_path, selfie_path]) as [fh0, fh1]:
+            request_files = [('file0',(filename0, fh0,'application/octet-stream')),('file1',(filename1, fh1,'application/octet-stream'))]
+            request_files.extend(files)
+
+            return request_sync("POST", "https://api.iapp.co.th/v3/store/ekyc/face-and-id-card-verification",
+                                apikey=self.apikey, headers=headers,
+                                data={**data_payload}, files=request_files)
 
     def _face_config_score(self, data_payload, headers=None):
         if headers is None:
@@ -1188,7 +1227,7 @@ class api():
             request_files = [('file',(filename, fh,'image/jpg'))]
             request_files.extend(files)
 
-            return request_sync("POST", "https://api.iapp.co.th/thai-driver-license-ocr",
+            return request_sync("POST", f"{API_BASE}/v3/store/ekyc/thai-driver-license",
                                 apikey=self.apikey, headers=headers,
                                 data={**data_payload}, files=request_files)
 

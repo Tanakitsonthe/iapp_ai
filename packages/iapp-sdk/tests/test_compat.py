@@ -88,7 +88,7 @@ def test_returns_raw_response_and_does_not_raise(captured):
 def test_json_endpoint_sets_content_type(captured):
     client = api("K")
     client.thai_qa_api(question="q", document="d")
-    assert captured["url"] == "https://api.iapp.co.th/thai-qa"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/nlp/question/answer/v3"
     assert captured["headers"].get("Content-Type") == "application/json"
     assert json.loads(captured["data"]) == {"question": "q", "document": "d"}
 
@@ -97,7 +97,7 @@ def test_idcard_front_url_and_content_type(captured, tmp_path):
     f = tmp_path / "id.jpg"
     f.write_bytes(b"\xff\xd8\xff")
     api("K").idcard_front(str(f))
-    assert captured["url"] == "https://api.iapp.co.th/thai-national-id-card/v3/front"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/ekyc/thai-national-id-card/front"
     field, filetuple = captured["files"][0]
     assert field == "file"
     assert filetuple[0] == "id.jpg"      # basename used as filename
@@ -108,7 +108,7 @@ def test_photocopied_url_is_trimmed(captured, tmp_path):
     f = tmp_path / "id.jpg"
     f.write_bytes(b"x")
     api("K").idcard_front_photocopied(str(f))
-    assert captured["url"] == "https://api.iapp.co.th/thai-national-id-card-with-signature/front"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/ekyc/thai-national-id-card-with-signature"
 
 
 def test_face_verification_two_files_octet_stream(captured, tmp_path):
@@ -122,6 +122,18 @@ def test_face_verification_two_files_octet_stream(captured, tmp_path):
     assert captured["data"]["threshold"] == 0.5
     fields = [item[0] for item in captured["files"]]
     assert fields == ["file1", "file2"]
+    assert all(item[1][2] == "application/octet-stream" for item in captured["files"])
+
+
+def test_face_id_card_verification_uses_file0_file1(captured, tmp_path):
+    idc = tmp_path / "idcard.jpg"
+    idc.write_bytes(b"idcard")
+    selfie = tmp_path / "selfie.jpg"
+    selfie.write_bytes(b"selfie")
+    api("K").face_id_card_verification(str(idc), str(selfie))
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/ekyc/face-and-id-card-verification"
+    fields = [item[0] for item in captured["files"]]
+    assert fields == ["file0", "file1"]  # file0=id card, file1=selfie
     assert all(item[1][2] == "application/octet-stream" for item in captured["files"])
 
 
@@ -154,7 +166,7 @@ def test_passport_ocr_uses_two_tuple_file(captured, tmp_path):
     f = tmp_path / "p.jpg"
     f.write_bytes(b"x")
     api("K").passport_ocr(str(f))
-    assert captured["url"] == "https://api.iapp.co.th/passport-ocr/ocr"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/ekyc/passport/v2"
     # passport uses a 2-tuple (no content type) — must not gain one
     assert len(captured["files"][0][1]) == 2
 
@@ -223,11 +235,11 @@ def test_summarization_includes_optional_fields_only_when_set(captured):
     }
 
 
-# --- thai_qa_api -> POST /thai-qa (already docs-aligned, guarded here) ------- #
+# --- thai_qa_api -> POST /v3/store/nlp/question/answer/v3 -------------------- #
 def test_qa_posts_json_to_thai_qa(captured):
     api("K").thai_qa_api(question="ใครเป็นนายก", document="บริบท")
     assert captured["method"] == "POST"
-    assert captured["url"] == "https://api.iapp.co.th/thai-qa"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/nlp/question/answer/v3"
     assert captured["headers"]["Content-Type"] == "application/json"
     assert json.loads(captured["data"]) == {"question": "ใครเป็นนายก", "document": "บริบท"}
 
@@ -298,17 +310,15 @@ def test_water_meter_binary_uploads_file_multipart(captured, tmp_path):
     f.write_bytes(b"\xff\xd8\xff")
     api("K").water_meter_binary(str(f))
     assert captured["method"] == "POST"
-    assert captured["url"] == "https://api.iapp.co.th/meter-number-ocr/file"
-    field, filetuple = captured["files"][0]
-    assert field == "file"
-    assert filetuple[0] == "meter.jpg"   # basename used as filename
-    assert filetuple[2] == "image/jpg"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/smart-city/power-meter-and-water-meter/base64"
+    assert captured["headers"].get("Content-Type") == "application/json"
+    assert json.loads(captured["data"]) == {"image": "/9j/"}
 
 
 def test_water_meter_base64_sends_json_image(captured):
     api("K").water_meter_base64(data_payload="BASE64DATA")
     assert captured["method"] == "POST"
-    assert captured["url"] == "https://api.iapp.co.th/meter-number-ocr/base64"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/smart-city/power-meter-and-water-meter/base64"
     assert captured["headers"].get("Content-Type") == "application/json"
     assert json.loads(captured["data"]) == {"image": "BASE64DATA"}
 
@@ -318,7 +328,7 @@ def test_license_plate_ocr_uploads_file_multipart(captured, tmp_path):
     f.write_bytes(b"\xff\xd8\xff")
     api("K").license_plate_ocr(str(f))
     assert captured["method"] == "POST"
-    assert captured["url"] == "https://api.iapp.co.th/license-plate-recognition/file"
+    assert captured["url"] == "https://api.iapp.co.th/v3/store/smart-city/license-plate-ocr"
     field, filetuple = captured["files"][0]
     assert field == "file"
     assert filetuple[0] == "car.jpg"     # basename used as filename
